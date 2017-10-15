@@ -14,56 +14,59 @@
 import re
 import threading
 import traceback
-import requests
-import json
 
 import itchat
+import requests
 from itchat.content import *
 
 from alimama import Alimama
 
-
 al = Alimama()
 al.login()
-#你运行下我看看
-#【蚊帐空调迷你变频蚊帐小空调机床上空调卧室空调扇冷暖制冷包邮】，复制这条信息￥pEcJ03iEpIT￥后打开👉手机淘宝👈
-
-
-
 
 
 # 检查是否是淘宝链接
 def check_if_is_tb_link(msg):
     if re.search(ur'【.*】', msg.text) and (u'打开👉手机淘宝👈' in msg.text or u'打开👉天猫APP👈' in msg.text):
-#        try:// 提交地址
-        taokoulingurl='http://www.taokouling.com/index.php?m=api&a=taokoulingjm';
-        urldata='&username=jindx&password=yjghdidr&text='
         try:
+            print msg.text
             q = re.search(ur'【.*】', msg.text).group().replace(u'【', '').replace(u'】', '')
             if u'打开👉天猫APP👈' in msg.text:
-                taokouling = re.findall(r'￥(.*)￥', msg.text)
-                taokouling = "￥" + str(taokouling[0]) + "￥"
-                parms = {'username': 'jindx', 'password': 'yjghdidr', 'text': taokouling}
-                urlres = requests.post(taokoulingurl, data=parms)
-                url = json.loads(urlres.text)['url']
+                try:
+                    url = re.search(ur'http://.* \)', msg.text).group().replace(u' )', '')
+                except:
+                    url = None
+
             else:
-                taokouling = re.findall(ur'￥(.*)￥', msg.text)
-                taokouling = "￥" + str(taokouling[0]) + "￥"
-                parms={'username':'jindx','password':'yjghdidr','text':taokouling}
-                urlres = requests.post(taokoulingurl,data=parms)
-                url = json.loads(urlres.text)['url']
+                try:
+                    url = re.search(ur'http://.* ，', msg.text).group().replace(u' ，', '')
+                except:
+                    url = None
+            # 20170909新版淘宝分享中没有链接， 感谢网友jindx0713（https://github.com/jindx0713）提供代码和思路，现在使用第三方网站 http://www.taokouling.com 根据淘口令获取url
+            if url is None:
+                taokoulingurl = 'http://www.taokouling.com/index.php?m=api&a=taokoulingjm'
+                taokouling = re.search(r'￥.*?￥', msg.text.encode('utf8')).group()
+                parms = {'username': 'wx_tb_fanli', 'password': 'wx_tb_fanli', 'text': taokouling}
+                res = requests.post(taokoulingurl, data=parms)
+                # print res.text
+                url = res.json()['url'].replace('https://', 'http://')
+                print "tkl url: {}".format(url)
 
-            #real_url = al.get_real_url(url)
-            # get detai
-            real_url=url
+            # get real url
+            real_url = al.get_real_url(url)
+            print "real_url: {}".format(real_url)
 
+            # get detail
             res = al.get_detail(real_url)
             auctionid = res['auctionId']
             coupon_amount = res['couponAmount']
             tk_rate = res['tkRate']
             price = res['zkPrice']
-            print 'fx rate:%s' % tk_rate
-
+            fanli = price * (tk_rate / 100 * 0.6)
+            #print price
+           #print tk_rate
+            fanli1 = round(fanli,2)
+            #print fanli1
 
 
 
@@ -84,18 +87,22 @@ def check_if_is_tb_link(msg):
                 # 【下单地址】%s
                 # ''' % (q, fx, coupon_amount, coupon_token, short_link)
                 res_text = u'''%s
+【原价】%s元
+【返现】%s元
 【优惠券】%s元
 请复制%s淘口令、打开淘宝APP下单
 -----------------
 【下单地址】%s
-            ''' % (q, coupon_amount, coupon_token, short_link)
+            ''' % (q,price,fanli1,coupon_amount, coupon_token, short_link)
             else:
                 res_text = u'''%s
+【原价】%s元
+【返现】%s元
 【优惠券】%s元
 请复制%s淘口令、打开淘宝APP下单
 -----------------
 【下单地址】%s
-                                ''' % (q, coupon_amount, tao_token, short_link)
+                                ''' % (q,price,fanli1,coupon_amount, tao_token, short_link)
             # res_text = u'''
             # %s
             # 【返现】%s元
@@ -118,7 +125,6 @@ class WxBot(object):
     @itchat.msg_register([TEXT])
     def text_reply(msg):
         # print  '%s: %s' % (msg.type, msg.text)
-        print msg.Content
         check_if_is_tb_link(msg)
         # msg.user.send('%s: %s' % (msg.type, msg.text))
 
@@ -133,9 +139,13 @@ class WxBot(object):
         itchat.auto_login(True)
         itchat.run(True)
 
+    @itchat.msg_register(FRIENDS)
+    def add_friend(msg):
+        itchat.add_friend(**msg['Text'])
+        itchat.send_msg('Nice to meet you', msg['RecommendInfo']['UserName'])
+
 
 if __name__ == '__main__':
-
     mi = WxBot()
     t = threading.Thread(target=mi.run, args=())
     t.start()
